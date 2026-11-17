@@ -1,0 +1,68 @@
+name: Build VPNSOPR Turbo Windows
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Initialize Windows wrapper and organize files
+        shell: pwsh
+        run: |
+          flutter create --platforms=windows --project-name vpn_sopr_gaming .
+          New-Item -ItemType Directory -Force -Path lib/models, lib/services, lib/theme, lib/screens, lib/widgets | Out-Null
+          $moves = @{
+            "main.dart" = "lib/main.dart"
+            "vpn_config.dart" = "lib/models/vpn_config.dart"
+            "vpn_engine_service.dart" = "lib/services/vpn_engine_service.dart"
+            "dragon_theme.dart" = "lib/theme/dragon_theme.dart"
+            "ping_chart.dart" = "lib/widgets/ping_chart.dart"
+            "auth_screen.dart" = "lib/screens/auth_screen.dart"
+            "dashboard_screen.dart" = "lib/screens/dashboard_screen.dart"
+            "shop_screen.dart" = "lib/screens/shop_screen.dart"
+            "configs_screen.dart" = "lib/screens/configs_screen.dart"
+            "subscriptions_screen.dart" = "lib/screens/subscriptions_screen.dart"
+            "admin_panel_screen.dart" = "lib/screens/admin_panel_screen.dart"
+            "tickets_screen.dart" = "lib/screens/tickets_screen.dart"
+            "logs_screen.dart" = "lib/screens/logs_screen.dart"
+            "settings_screen.dart" = "lib/screens/settings_screen.dart"
+          }
+          foreach ($k in $moves.Keys) {
+            if (Test-Path $k) { Move-Item -Force $k $moves[$k] }
+          }
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows Release
+        run: flutter build windows --release
+
+      - name: Bundle Xray-core (xray.exe) into Release folder
+        shell: pwsh
+        run: |
+          $url = "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip"
+          Invoke-WebRequest -Uri $url -OutFile xray.zip
+          Expand-Archive -Path xray.zip -DestinationPath xray_tmp -Force
+          Copy-Item -Force "xray_tmp/xray.exe" "build/windows/x64/runner/Release/xray.exe"
+          if (Test-Path "xray_tmp/geoip.dat") { Copy-Item -Force "xray_tmp/geoip.dat" "build/windows/x64/runner/Release/geoip.dat" }
+          if (Test-Path "xray_tmp/geosite.dat") { Copy-Item -Force "xray_tmp/geosite.dat" "build/windows/x64/runner/Release/geosite.dat" }
+
+      - name: Upload Windows Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpnsopr-turbo-windows
+          path: build/windows/x64/runner/Release/
